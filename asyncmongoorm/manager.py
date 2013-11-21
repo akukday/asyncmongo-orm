@@ -11,9 +11,9 @@ class Manager(object):
         self.collection = collection
     
     @gen.engine
-    def find_one(self, query, callback):
-        result, error = yield gen.Task(Session(self.collection.__collection__).find_one, query)
-        
+    def find_one(self, query, callback, **kw):
+        result, error = yield gen.Task(Session(self.collection.__collection__).find_one, query, **kw)
+
         instance = None
         if result and result[0]:
             instance = self.collection.create(result[0])
@@ -30,6 +30,19 @@ class Manager(object):
                 items.append(self.collection.create(item))
 
         callback(items)
+
+    @gen.engine
+    def get_or_create(self, query, callback, defaults=None, **kw):
+        result, error = yield gen.Task(Session(self.collection.__collection__).find_one, query, **kw)
+
+        if result and result[0]:
+            instance = self.collection.create(result[0])
+            created = False
+        else:
+            created = True
+            instance = self.collection.create(defaults)
+
+        callback(instance, created)
 
     @gen.engine
     def count(self, query=None, callback=None):
@@ -140,7 +153,18 @@ class Manager(object):
         callback(result[0]['results'])
 
     @gen.engine
-    def drop(self, callback):
+    def drop(self, callback=None):
         yield gen.Task(Session(self.collection.__collection__).remove)
-        
-        callback()
+        if callback:
+            callback()
+          
+            
+def attach(model_cls):
+    """
+    Short-cut decorator that attaches manger to a model class
+    """
+    def wrapper(manager_cls):
+        model_cls.objects = manager_cls(model_cls)
+        return manager_cls
+    return wrapper
+

@@ -67,8 +67,7 @@ class CollectionTestCase(unittest2.TestCase):
             list_attr = ListField()
             object_attr = ObjectField()
             object_id_attr = ObjectIdField()
-            unknow_object = StringField()
-            
+
         collection_test = CollectionTest()
         collection_test.string_attr = 'string_attr'
         collection_test.integer_attr = 1
@@ -89,7 +88,21 @@ class CollectionTestCase(unittest2.TestCase):
             'object_id_attr': object_id,
         }
         
-        self.assertEquals(expected_dict, collection_test.as_dict())
+        self.assertDictEqual(expected_dict, collection_test.as_dict())
+        only_fields = {
+            'string_attr': 'string_attr',
+            'integer_attr': 1,
+        }
+        self.assertDictEqual(only_fields, collection_test.as_dict(fields=('string_attr','integer_attr')))
+
+        excluded_fields = {
+            'bool_attr': False,
+            'float_attr': 1.0,
+            'list_attr': [1,2,3],
+            'object_attr': {'chave': 'valor'},
+            'object_id_attr': object_id,
+        }
+        self.assertDictEqual(excluded_fields, collection_test.as_dict(exclude=('string_attr','integer_attr')))
         
     def test_can_create_collection(self):
         object_id = ObjectId()
@@ -102,7 +115,7 @@ class CollectionTestCase(unittest2.TestCase):
             'object_attr': {'chave': 'valor'},
             'object_id_attr': object_id,
         }
-        
+
         class CollectionTest(collection.Collection):
             string_attr = StringField()
             integer_attr = IntegerField()
@@ -202,17 +215,15 @@ class CollectionTestCase(unittest2.TestCase):
 
         class CollectionTest(collection.Collection):
             __collection__ = 'some_collection'
-            _id = 1
             some_attr = StringField()
-
-        collection_test_instance = CollectionTest()
-        collection_test_instance.some_attr = 'first'
+        _id = ObjectId()
+        collection_test_instance = CollectionTest.create(dict(_id=_id, some_attr="first"))
 
         object_data = {'some_attr': 'second'}
 
         def fake_update(query, data, callback, safe):
-            self.assertEquals({'_id':1}, query)
-            self.assertEquals(object_data, data)
+            self.assertEquals({'_id': _id }, query)
+            self.assertEquals({"$set": object_data}, data)
             self.assertEquals(True, safe)
 
             callback((None, 'should_be_error'))
@@ -222,7 +233,7 @@ class CollectionTestCase(unittest2.TestCase):
                         .returns_fake().has_attr(update=fake_update)
 
         with fudge.patched_context(collection, 'Session', fake_session):
-            error = yield gen.Task(collection_test_instance.update, object_data)
+            error = yield gen.Task(collection_test_instance.save, object_data)
             self.assertEquals('should_be_error', error)
 
     @fudge.test
@@ -231,15 +242,13 @@ class CollectionTestCase(unittest2.TestCase):
 
         class CollectionTest(collection.Collection):
             __collection__ = 'some_collection'
-            _id = 1
             some_attr = StringField()
-
-        collection_test_instance = CollectionTest()
-        collection_test_instance.some_attr = 'first'
-
+        _id = ObjectId()
+        collection_test_instance = CollectionTest.create(dict(_id=_id, some_attr="first"))
+        collection_test_instance.some_attr = "foobar"
         def fake_update(query, data, callback, safe):
-            self.assertEquals(query, {'_id':1})
-            self.assertEquals(data, {'some_attr': 'first'})
+            self.assertEquals(query, {'_id': _id})
+            self.assertEquals(data, { "$set" : {'some_attr': 'foobar'} })
             self.assertEquals(safe, True)
 
             callback((None, 'should_be_error'))
@@ -249,5 +258,5 @@ class CollectionTestCase(unittest2.TestCase):
                         .returns_fake().has_attr(update=fake_update)
 
         with fudge.patched_context(collection, 'Session', fake_session):
-            error = yield gen.Task(collection_test_instance.update)
+            error = yield gen.Task(collection_test_instance.save)
             self.assertEquals('should_be_error', error)
